@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conversor de Extratos Bancários</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: #f0f2f5;
+    color: #1c1e21;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    background: #0b3d62;
+    color: #fff;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header h1 { font-size: 1.15rem; font-weight: 600; }
+  header .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  select, button {
+    font-size: .9rem;
+    padding: 7px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+  }
+  button {
+    background: #0b6e4f;
+    color: #fff;
+    border: none;
+    font-weight: 600;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secundario { background: #3a6ea5; }
+  button:disabled { background: #999; cursor: not-allowed; }
+  main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 16px 24px;
+  }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .painel {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .painel h2 {
+    font-size: .95rem;
+    padding: 10px 14px;
+    background: #e8edf3;
+    border-bottom: 1px solid #d5dde6;
+  }
+  textarea {
+    flex: 1;
+    min-height: 320px;
+    width: 100%;
+    border: none;
+    resize: none;
+    padding: 12px;
+    font-family: Consolas, monospace;
+    font-size: .85rem;
+    outline: none;
+  }
+  .painel .acoes {
+    padding: 10px 14px;
+    border-top: 1px solid #e3e8ee;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .tabela-wrap {
+    flex: 1;
+    overflow: auto;
+    max-height: 55vh;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+  th, td {
+    border: 1px solid #dde3ea;
+    padding: 5px 9px;
+    text-align: left;
+  }
+  thead th {
+    background: #0b3d62;
+    color: #fff;
+    position: sticky;
+    top: 0;
+  }
+  tbody tr:nth-child(even) { background: #f5f8fb; }
+  td.num { text-align: right; font-family: Consolas, monospace; }
+  td.neg { color: #c0392b; }
+  td.pos { color: #0b6e4f; }
+  footer {
+    padding: 10px 24px;
+    font-size: .85rem;
+    color: #555;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: #e8edf3;
+    border-top: 1px solid #d5dde6;
+  }
+  .aviso {
+    color: #b3541e;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  /* modal */
+  .modal-fundo {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.45);
+    z-index: 10;
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-fundo.aberto { display: flex; }
+  .modal {
+    background: #fff;
+    border-radius: 8px;
+    width: min(620px, 92vw);
+    max-height: 88vh;
+    overflow: auto;
+    padding: 20px 24px;
+  }
+  .modal h3 { margin-bottom: 12px; }
+  .modal label { display: block; font-size: .85rem; margin: 10px 0 4px; font-weight: 600; }
+  .modal input, .modal select, .modal textarea {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: .88rem;
+  }
+  .modal textarea { font-family: Consolas, monospace; min-height: 110px; }
+  .grade-colunas {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+    margin-top: 6px;
+  }
+  .modal .acoes { margin-top: 16px; display: flex; gap: 10px; justify-content: flex-end; }
+  .exemplos { font-size: .78rem; color: #555; padding: 8px 14px; border-top: 1px solid #e3e8ee; max-height: 140px; overflow: auto; }
+  .exemplos pre { font-family: Consolas, monospace; white-space: pre-wrap; margin: 4px 0 8px; background: #f5f8fb; padding: 6px; border-radius: 4px; cursor: pointer; }
+  .exemplos pre:hover { background: #e8f0e9; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Conversor de Extratos → Base Unificada</h1>
+  <div class="controls">
+    <label for="selBanco">Banco:</label>
+    <select id="selBanco"></select>
+    <button class="secundario" id="btnNovoModelo">+ Adicionar modelo de banco</button>
+    <button class="secundario" id="btnExcluirModelo" title="Excluir modelo customizado selecionado">Excluir modelo</button>
+  </div>
+</header>
+
+<main>
+  <section class="painel">
+    <h2>1. Cole aqui as linhas do extrato</h2>
+    <textarea id="entrada" placeholder="Cole as linhas copiadas do extrato (Ctrl+V)..."></textarea>
+    <div class="acoes">
+      <button id="btnConverter">Converter</button>
+      <button class="secundario" id="btnLimpar">Limpar</button>
+    </div>
+    <div class="exemplos" id="exemplos"></div>
+  </section>
+
+  <section class="painel">
+    <h2>2. Base unificada (copie e cole no Excel)</h2>
+    <div class="tabela-wrap">
+      <table id="tabela">
+        <thead>
+          <tr>
+            <th>Data</th><th>Descrição</th><th>Razão Social</th><th>CNPJ/CPF</th>
+            <th>Valor (R$)</th><th>Saldo</th><th>Banco</th>
+          </tr>
+        </thead>
+        <tbody id="corpoTabela"></tbody>
+      </table>
+    </div>
+    <div class="acoes">
+      <button id="btnCopiar">Copiar para o Excel</button>
+      <span id="msgCopia" style="font-size:.82rem;color:#0b6e4f;font-weight:600;"></span>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <span id="contConvertidas">Convertidas: 0</span>
+  <span id="contIgnoradas">Ignoradas: 0</span>
+  <span class="aviso" id="avisoIgnoradas" style="display:none;"></span>
+</footer>
+
+<!-- Modal: novo modelo -->
+<div class="modal-fundo" id="modalFundo">
+  <div class="modal">
+    <h3>Adicionar modelo de banco</h3>
+    <label for="novoNome">Nome do banco</label>
+    <input id="novoNome" placeholder="Ex: Bradesco, Caixa, Santander...">
+    <label for="novoExemplo">Cole 1 linha de exemplo (com TAB ou espaços entre as colunas)</label>
+    <textarea id="novoExemplo" placeholder="01/01/2025	TRANSF RECEBIDA	0,50	1.234,56"></textarea>
+    <label>Em qual posição está cada coluna? (0 = não existe no extrato)</label>
+    <div class="grade-colunas" id="gradeColunas"></div>
+    <div class="acoes">
+      <button class="secundario" id="btnCancelarModelo">Cancelar</button>
+      <button id="btnSalvarModelo">Salvar modelo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ================= Utilidades ================= */
+
+// Converte "1.234,56", "-1.234,56" ou "1.234,56-" em número.
+function parseValorBR(s) {
+  if (s == null) return null;
+  s = String(s).trim();
+  if (!s) return null;
+  let negativo = false;
+  if (s.endsWith("-")) { negativo = true; s = s.slice(0, -1); }
+  s = s.replace(/R\$|\s/g, "");
+  if (s.startsWith("(") && s.endsWith(")")) { negativo = true; s = s.slice(1, -1); }
+  if (s.startsWith("-")) { negativo = true; s = s.slice(1); }
+  s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  if (isNaN(n)) return null;
+  return negativo ? -n : n;
+}
+
+// Formata número como o Excel aceita ao colar: -1234.56 vira "-1234,56"
+function fmtNumero(n) {
+  if (n == null || isNaN(n)) return "";
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Normaliza data DD/MM/AAAA (aceita DD/MM/AA e D/M/AAAA)
+function parseData(s) {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+  if (!m) return null;
+  let [, d, m2, a] = m;
+  if (a.length === 2) a = "20" + a;
+  // PDF corta colunas estreitas: "28/09/202" -> completa com o ano atual
+  if (a.length === 3) a = a + String(new Date().getFullYear()).slice(3);
+  return `${d.padStart(2, "0")}/${m2.padStart(2, "0")}/${a}`;
+}
+
+function mascaraCNPJ(s) {
+  const d = String(s || "").replace(/\D/g, "");
+  if (d.length === 14) return d.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, "$1.$2.$3/$4-$5");
+  if (d.length === 11) return d.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  return s || "";
+}
+
+function detectaCNPJ(texto) {
+  const m = texto.match(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b|\b\d{14}\b|\b\d{11}\b/);
+  return m ? mascaraCNPJ(m[0]) : "";
+}
+
+function linhaValida(l) { return l && l.trim().length > 0; }
+
+/* ================= Parsers fixos ================= */
+
+// Divide a linha em colunas: TAB se existir, senão 2+ espaços.
+function divideColunas(linha) {
+  if (linha.includes("\t")) return linha.split("\t").map(c => c.trim());
+  return linha.split(/\s{2,}/).map(c => c.trim());
+}
+
+const parsersFixos = {
+  itau: {
+    nome: "Itaú",
+    exemplo: "01/03/2025\tSALDO ANTERIOR\t\t\t\t\t2.500,00\n03/03/2025\tTRANSF RECEBIDA PIX\t123456\t500,00\t\t3.000,00\n05/03/2025\tPAGAMENTO BOLETO\t654321\t\t-150,75\t2.849,25",
+    parsear(linha) {
+      const col = divideColunas(linha);
+      const data = parseData(col[0]);
+      if (!data) return null;
+      // Itaú cópia: Data | Histórico | Docto | Crédito | Débito | Saldo
+      // O Docto é um número inteiro (sem centavos) — ignorado.
+      // Detecta quais colunas são monetárias: têm vírgula de centavos ou sinal.
+      const ehMonetario = c => {
+        const t = c.trim();
+        return /,/.test(t) || /^-/.test(t) || /-$/.test(t) || /^\(.*\)$/.test(t);
+      };
+      const monetarios = col.slice(1).map(c => ehMonetario(c) ? parseValorBR(c) : null);
+      const validos = monetarios.filter(v => v !== null);
+      if (!validos.length) return null;
+      const descricao = col[1] || "";
+      const cnpj = detectaCNPJ(descricao + " " + (col[2] || ""));
+      let valor, saldo = null;
+      if (validos.length === 1) {
+        valor = validos[0];
+      } else {
+        saldo = validos[validos.length - 1];
+        valor = validos[validos.length - 2];
+        // Crédito e débito em colunas separadas: pega o primeiro não-nulo
+        for (const v of monetarios) {
+          if (v !== null && v !== saldo) { valor = v; break; }
+        }
+      }
+      return {
+        data,
+        descricao,
+        razaoSocial: "",
+        cnpj,
+        valor,
+        saldo
+      };
+    }
+  },
+
+  bb: {
+    nome: "Banco do Brasil",
+    exemplo: "01/10/2026\t01/10/2026\t0000\t14397\t000108040115860002\t821\tPix - Recebido\t104,00\tC\t01/10 08:04 00034236602873 DENNY WILSON\n02/10/2026\t02/10/2026\t0000\t14398\t00010805000000999\t005\tSaque\t50,00\tD\t02/10 10:22",
+    parsear(linha) {
+      // BB: Data | Data | Agência | Lote | Número | Cód. | Histórico | Valor R$ | Inf.(C/D) | Detalhamento
+      const col = divideColunas(linha);
+      const data = parseData(col[0]);
+      if (!data) return null;
+      let valor = null, descricao = "";
+      // Acha a coluna Inf. (letra C ou D sozinha): o valor é a coluna imediatamente antes
+      let idxInf = -1;
+      for (let i = 1; i < col.length; i++) {
+        if (/^[CD]$/.test(col[i].trim())) { idxInf = i; break; }
+      }
+      if (idxInf > 0) {
+        valor = parseValorBR(col[idxInf - 1]);
+        // Histórico = coluna de texto mais próxima antes do valor (pula as numéricas: lote, número, cód.)
+        for (let j = idxInf - 2; j >= 1; j--) {
+          if (col[j].trim() && !/^\d+$/.test(col[j].trim())) { descricao = col[j]; break; }
+        }
+        if (valor !== null) {
+          if (col[idxInf].trim() === "D") valor = -Math.abs(valor);
+          if (col[idxInf].trim() === "C") valor = Math.abs(valor);
+        }
+      } else {
+        // Fallback sem coluna C/D: última coluna monetária é o valor
+        for (let i = col.length - 1; i >= 1; i--) {
+          if (/,/.test(col[i])) {
+            valor = parseValorBR(col[i]);
+            if (valor !== null) {
+              for (let j = i - 1; j >= 1; j--) {
+                if (col[j].trim() && !/^\d+$/.test(col[j].trim())) { descricao = col[j]; break; }
+              }
+              break;
+            }
+          }
+        }
+      }
+      if (valor === null) return null;
+      if (/saldo ant/i.test(descricao)) return null; // saldo anterior não é lançamento
+      // CNPJ/CPF: no BB vem na coluna "Número" (documento), com zeros à esquerda/extra
+      let cnpj = "";
+      if (idxInf > 0) {
+        for (let j = idxInf - 2; j >= 1; j--) {
+          const d = col[j].replace(/\D/g, "");
+          if (!d) continue;
+          let cand = "";
+          if (d.length === 14 || d.length === 11) cand = d;
+          else {
+            const t = d.replace(/^0+/, "");
+            if (t.length === 14 || t.length === 11) cand = t;
+            else if (d.length > 14) cand = d.slice(-14);
+          }
+          if (cand.length === 14 || cand.length === 11) { cnpj = mascaraCNPJ(cand); break; }
+        }
+      }
+      if (!cnpj && idxInf > 0) cnpj = detectaCNPJ(col.slice(idxInf + 1).join(" ") + " " + descricao);
+      // Razão Social: nome que vem no detalhamento (após data-hora e CNPJ)
+      let razaoSocial = "";
+      const ultima = (col[col.length - 1] || "").trim();
+      if (idxInf > 0 && col.length - 1 > idxInf) {
+        const mDet = ultima.match(/^(?:\d{2}\/\d{2}\s+\d{2}:\d{2}\s+)?\d[\d./-]*\s+(.+)$/);
+        if (mDet) razaoSocial = mDet[1].trim();
+      }
+      return {
+        data,
+        descricao,
+        razaoSocial,
+        cnpj,
+        valor,
+        saldo: null
+      };
+    }
+  },
+
+  sicredi: {
+    nome: "Sicredi",
+    exemplo: "03/03/2025\tPIX RECEBIDO - JOÃO SILVA\t\t500,00\t3.000,00\n05/03/2025\tTARIFAS BANCÁRIAS\t\t-15,20\t2.984,80",
+    parsear(linha) {
+      const col = divideColunas(linha);
+      const data = parseData(col[0]);
+      if (!data) return null;
+      const numeros = col.slice(1).map(parseValorBR).filter(v => v !== null);
+      if (!numeros.length) return null;
+      const descricao = col[1] || "";
+      let valor, saldo = null;
+      if (numeros.length === 1) {
+        valor = numeros[0];
+      } else {
+        valor = numeros[numeros.length - 2];
+        saldo = numeros[numeros.length - 1];
+      }
+      return {
+        data,
+        descricao,
+        razaoSocial: "",
+        cnpj: detectaCNPJ(descricao),
+        valor,
+        saldo
+      };
+    }
+  },
+
+  generico: {
+    nome: "Genérico (data + descrição + valor)",
+    exemplo: "01/03/2025 Compra no débito - MERCADO ABC -150,45\n03/03/2025 Depósito 2.000,00",
+    parsear(linha) {
+      // Qualquer linha começando com data, depois texto, depois um valor no fim.
+      const m = linha.trim().match(/^(\d{1,2}\/\d{1,2}\/\d{2,4})\s+(.+?)\s+(-?[\d.,]+-?)$/);
+      if (!m) return null;
+      const data = parseData(m[1]);
+      const valor = parseValorBR(m[3]);
+      if (!data || valor === null) return null;
+      const descricao = m[2];
+      return {
+        data,
+        descricao,
+        razaoSocial: "",
+        cnpj: detectaCNPJ(descricao),
+        valor,
+        saldo: null
+      };
+    }
+  }
+};
+
+/* ================= Modelos customizados (localStorage) ================= */
+
+const CHAVE_MODELOS = "extratos_modelos_custom";
+
+function carregarModelos() {
+  try { return JSON.parse(localStorage.getItem(CHAVE_MODELOS)) || {}; }
+  catch { return {}; }
+}
+
+function salvarModelos(m) {
+  localStorage.setItem(CHAVE_MODELOS, JSON.stringify(m));
+}
+
+// mapeamento: { data: pos, descricao: pos, valor: pos, saldo: pos, razaoSocial: pos, cnpj: pos } (0 = não existe)
+function criarParserCustom(nome, mapeamento) {
+  return {
+    nome,
+    exemplo: "(modelo customizado)",
+    parsear(linha) {
+      const col = divideColunas(linha);
+      const pos = k => { const p = mapeamento[k]; return p > 0 ? col[p - 1] : undefined; };
+      const data = parseData(pos("data"));
+      const valor = parseValorBR(pos("valor"));
+      if (!data || valor === null) return null;
+      const descricao = (pos("descricao") || "").trim();
+      const cnpjBruto = (pos("cnpj") || "").trim();
+      return {
+        data,
+        descricao,
+        razaoSocial: (pos("razaoSocial") || "").trim(),
+        cnpj: cnpjBruto ? mascaraCNPJ(cnpjBruto) : detectaCNPJ(descricao),
+        valor,
+        saldo: parseValorBR(pos("saldo"))
+      };
+    }
+  };
+}
+
+function todosParsers() {
+  const custom = carregarModelos();
+  const r = { ...parsersFixos };
+  for (const [id, cfg] of Object.entries(custom)) {
+    r["custom_" + id] = criarParserCustom(cfg.nome, cfg.mapeamento);
+  }
+  return r;
+}
+
+/* ================= Interface ================= */
+
+const selBanco = document.getElementById("selBanco");
+const entrada = document.getElementById("entrada");
+const corpoTabela = document.getElementById("corpoTabela");
+const exemplos = document.getElementById("exemplos");
+let linhasIgnoradas = [];
+
+function preencherBancos() {
+  const ps = todosParsers();
+  const atual = selBanco.value;
+  selBanco.innerHTML = "";
+  for (const [id, p] of Object.entries(ps)) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = p.nome;
+    selBanco.appendChild(opt);
+  }
+  if (ps[atual]) selBanco.value = atual;
+  mostrarExemplo();
+}
+
+function mostrarExemplo() {
+  const p = todosParsers()[selBanco.value];
+  exemplos.innerHTML = "<b>Exemplo para testar (clique para copiar):</b>";
+  if (p && p.exemplo && p.exemplo !== "(modelo customizado)") {
+    const pre = document.createElement("pre");
+    pre.textContent = p.exemplo;
+    pre.title = "Clique para colar no campo ao lado";
+    pre.onclick = () => {
+      entrada.value = p.exemplo;
+      entrada.focus();
+    };
+    exemplos.appendChild(pre);
+  } else {
+    exemplos.innerHTML += "<div style='margin-top:4px;'>Modelo customizado — cole as linhas do seu extrato.</div>";
+  }
+}
+
+function converter() {
+  const parser = todosParsers()[selBanco.value];
+  if (!parser) return;
+  const nomeBanco = parser.nome;
+  const linhas = entrada.value.split(/\r?\n/).filter(linhaValida);
+  const registros = [];
+  linhasIgnoradas = [];
+
+  for (const linha of linhas) {
+    // Pula cabeçalhos comuns de extrato
+    if (/^(data|hist|lançamento|saldo|banco|extrato)/i.test(linha.trim()) && !parseData(divideColunas(linha)[0])) {
+      continue;
+    }
+    try {
+      const r = parser.parsear(linha);
+      if (r && r.data && r.valor !== null && r.valor !== undefined) {
+        registros.push({ ...r, banco: nomeBanco });
+      } else {
+        linhasIgnoradas.push(linha);
+      }
+    } catch {
+      linhasIgnoradas.push(linha);
+    }
+  }
+
+  corpoTabela.innerHTML = "";
+  for (const r of registros) {
+    const tr = document.createElement("tr");
+    const cls = r.valor < 0 ? "neg" : "pos";
+    tr.innerHTML =
+      `<td>${r.data}</td>` +
+      `<td></td><td></td><td></td>` +
+      `<td class="num ${cls}"></td><td class="num"></td><td></td>`;
+    const tds = tr.children;
+    tds[1].textContent = r.descricao || "";
+    tds[2].textContent = r.razaoSocial || "";
+    tds[3].textContent = r.cnpj || "";
+    tds[4].textContent = fmtNumero(r.valor);
+    tds[5].textContent = r.saldo !== null && r.saldo !== undefined ? fmtNumero(r.saldo) : "";
+    tds[6].textContent = r.banco || "";
+    corpoTabela.appendChild(tr);
+  }
+
+  document.getElementById("contConvertidas").textContent = `Convertidas: ${registros.length}`;
+  document.getElementById("contIgnoradas").textContent = `Ignoradas: ${linhasIgnoradas.length}`;
+  const aviso = document.getElementById("avisoIgnoradas");
+  if (linhasIgnoradas.length) {
+    aviso.style.display = "inline";
+    aviso.textContent = `Ver linhas ignoradas (${linhasIgnoradas.length})`;
+  } else {
+    aviso.style.display = "none";
+  }
+  document.getElementById("btnCopiar").disabled = registros.length === 0;
+}
+
+document.getElementById("avisoIgnoradas").onclick = () => {
+  if (linhasIgnoradas.length) alert("Linhas ignoradas:\n\n" + linhasIgnoradas.join("\n"));
+};
+
+function tabelaParaTSV() {
+  const linhas = [];
+  const cab = [...document.querySelectorAll("#tabela thead th")].map(th => th.textContent);
+  linhas.push(cab.join("\t"));
+  for (const tr of corpoTabela.children) {
+    linhas.push([...tr.children].map(td => td.textContent).join("\t"));
+  }
+  return linhas.join("\n");
+}
+
+document.getElementById("btnCopiar").onclick = async () => {
+  const tsv = tabelaParaTSV();
+  try {
+    await navigator.clipboard.writeText(tsv);
+  } catch {
+    // Fallback para navegadores sem clipboard API
+    const aux = document.createElement("textarea");
+    aux.value = tsv;
+    document.body.appendChild(aux);
+    aux.select();
+    document.execCommand("copy");
+    aux.remove();
+  }
+  const msg = document.getElementById("msgCopia");
+  msg.textContent = "Copiado! Agora cole no Excel (Ctrl+V).";
+  setTimeout(() => (msg.textContent = ""), 3000);
+};
+
+document.getElementById("btnConverter").onclick = converter;
+document.getElementById("btnLimpar").onclick = () => {
+  entrada.value = "";
+  corpoTabela.innerHTML = "";
+  entrada.focus();
+};
+selBanco.onchange = mostrarExemplo;
+
+/* ================= Modal novo modelo ================= */
+
+const CAMPOS = [
+  ["data", "Data (obrigatória)"],
+  ["valor", "Valor (obrigatório)"],
+  ["descricao", "Descrição"],
+  ["saldo", "Saldo"],
+  ["razaoSocial", "Razão Social"],
+  ["cnpj", "CNPJ/CPF"]
+];
+
+const modalFundo = document.getElementById("modalFundo");
+const gradeColunas = document.getElementById("gradeColunas");
+
+function montarGrade() {
+  gradeColunas.innerHTML = "";
+  for (const [chave, rotulo] of CAMPOS) {
+    const div = document.createElement("div");
+    const label = document.createElement("label");
+    label.style.fontWeight = "400";
+    label.textContent = rotulo;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = "0";
+    input.value = "0";
+    input.dataset.campo = chave;
+    input.style.marginTop = "2px";
+    div.appendChild(label);
+    div.appendChild(input);
+    gradeColunas.appendChild(div);
+  }
+}
+
+document.getElementById("btnNovoModelo").onclick = () => {
+  montarGrade();
+  document.getElementById("novoNome").value = "";
+  document.getElementById("novoExemplo").value = "";
+  modalFundo.classList.add("aberto");
+};
+
+document.getElementById("btnCancelarModelo").onclick = () => modalFundo.classList.remove("aberto");
+modalFundo.onclick = e => { if (e.target === modalFundo) modalFundo.classList.remove("aberto"); };
+
+document.getElementById("btnSalvarModelo").onclick = () => {
+  const nome = document.getElementById("novoNome").value.trim();
+  if (!nome) { alert("Informe o nome do banco."); return; }
+  const mapeamento = {};
+  let ok = false;
+  for (const input of gradeColunas.querySelectorAll("input")) {
+    const v = parseInt(input.value, 10) || 0;
+    mapeamento[input.dataset.campo] = v;
+    if ((input.dataset.campo === "data" || input.dataset.campo === "valor") && v > 0) ok = true;
+  }
+  if (!ok) { alert("Informe ao menos a posição da Data e do Valor (1 = primeira coluna)."); return; }
+  const modelos = carregarModelos();
+  modelos[Date.now()] = { nome, mapeamento };
+  salvarModelos(modelos);
+  preencherBancos();
+  selBanco.value = selBanco.querySelector(`option[data-ultimo]`)?.value || selBanco.value;
+  modalFundo.classList.remove("aberto");
+  alert(`Modelo "${nome}" salvo neste navegador.`);
+};
+
+document.getElementById("btnExcluirModelo").onclick = () => {
+  const id = selBanco.value;
+  if (!id.startsWith("custom_")) { alert("Selecione um modelo customizado para excluir."); return; }
+  const modelos = carregarModelos();
+  delete modelos[id.slice(7)];
+  salvarModelos(modelos);
+  preencherBancos();
+};
+
+/* ================= Inicialização ================= */
+
+preencherBancos();
+document.getElementById("btnCopiar").disabled = true;
+</script>
+</body>
+</html>
