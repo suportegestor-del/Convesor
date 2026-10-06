@@ -296,38 +296,42 @@ function divideColunas(linha) {
 const parsersFixos = {
   itau: {
     nome: "Itaú",
-    exemplo: "01/03/2025\tSALDO ANTERIOR\t\t\t\t\t2.500,00\n03/03/2025\tTRANSF RECEBIDA PIX\t123456\t500,00\t\t3.000,00\n05/03/2025\tPAGAMENTO BOLETO\t654321\t\t-150,75\t2.849,25",
+    exemplo: "Data\tLançamento\tRazão Social\tCPF/CNPJ\tValor (R$)\tSaldo (R$)\n02/10/2026\tSALDO ANTERIOR\t\t\t\t\t67019,53\n05/10/2026\tPIX RECEBIDO BYTEDAN03/10\tBYTEDANCE BRASIL TECNOLOGIA LTDA.\t27.415.911/0001-36\t195,03\t\n05/10/2026\tPIX ENVIADO\t\t\t-112,42\t",
     parsear(linha) {
       const col = divideColunas(linha);
       const data = parseData(col[0]);
       if (!data) return null;
-      // Itaú cópia: Data | Histórico | Docto | Crédito | Débito | Saldo
-      // O Docto é um número inteiro (sem centavos) — ignorado.
-      // Detecta quais colunas são monetárias: têm vírgula de centavos ou sinal.
-      const ehMonetario = c => {
-        const t = c.trim();
-        return /,/.test(t) || /^-/.test(t) || /-$/.test(t) || /^\(.*\)$/.test(t);
-      };
-      const monetarios = col.slice(1).map(c => ehMonetario(c) ? parseValorBR(c) : null);
-      const validos = monetarios.filter(v => v !== null);
-      if (!validos.length) return null;
       const descricao = col[1] || "";
-      const cnpj = detectaCNPJ(descricao + " " + (col[2] || ""));
-      let valor, saldo = null;
-      if (validos.length === 1) {
-        valor = validos[0];
+      const ehColunaCNPJ = s => /^\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}$|^\d{3}\.\d{3}\.\d{3}-\d{2}$|^\d{14}$|^\d{11}$/.test((s || "").trim());
+
+      // Layout Excel: Data | Lançamento | Razão Social | CPF/CNPJ | Valor | Saldo
+      let razaoSocial = "", cnpj = "", idxCnpj = -1;
+      if (col.length >= 4 && col[2] && col[2].trim() && parseValorBR(col[2]) === null && !/^\d+$/.test(col[2].trim()) && ehColunaCNPJ(col[3])) {
+        razaoSocial = col[2].trim();
+        cnpj = mascaraCNPJ(col[3]);
+        idxCnpj = 3;
       } else {
-        saldo = validos[validos.length - 1];
-        valor = validos[validos.length - 2];
-        // Crédito e débito em colunas separadas: pega o primeiro não-nulo
-        for (const v of monetarios) {
-          if (v !== null && v !== saldo) { valor = v; break; }
-        }
+        // Sem coluna própria: só aceita CNPJ mascarado no texto (números soltos são doc/contrato)
+        const m = col.join(" ").match(/\b\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}\b|\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/);
+        cnpj = m ? m[0] : "";
       }
+
+      // Valor e Saldo: colunas numéricas (monetárias primeiro; sem centavos só como fallback)
+      const ehMonetario = c => /,/.test(c) || /^-/.test(c.trim()) || /-$/.test(c.trim()) || /^\(.*\)$/.test(c.trim());
+      let nums = col.slice(2).filter((c, i) => (i + 2) !== idxCnpj && ehMonetario(c)).map(parseValorBR).filter(v => v !== null);
+      if (!nums.length) {
+        nums = col.slice(2).filter((c, i) => (i + 2) !== idxCnpj).map(parseValorBR).filter(v => v !== null);
+      }
+      let valor = null, saldo = null;
+      if (nums.length === 1) valor = nums[0];
+      else if (nums.length >= 2) { valor = nums[nums.length - 2]; saldo = nums[nums.length - 1]; }
+      // SALDO ANTERIOR: valor vai para a coluna Saldo, Valor fica vazio
+      if (/saldo ant/i.test(descricao)) { saldo = valor; valor = null; }
+      if (valor === null && saldo === null) return null;
       return {
         data,
         descricao,
-        razaoSocial: "",
+        razaoSocial,
         cnpj,
         valor,
         saldo
@@ -562,7 +566,7 @@ function converter() {
     }
     try {
       const r = parser.parsear(linha);
-      if (r && r.data && r.valor !== null && r.valor !== undefined) {
+      if (r && r.data && (r.valor !== null && r.valor !== undefined || r.saldo !== null && r.saldo !== undefined)) {
         registros.push({ ...r, banco: nomeBanco });
       } else {
         linhasIgnoradas.push(linha);
